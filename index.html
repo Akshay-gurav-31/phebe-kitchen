@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Phebe Kitchen - Dashboard</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&amp;family=Inter:wght@300..700&amp;display=swap"
+        rel="stylesheet" />
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#4edea3" />
+    <link rel="icon" type="image/svg+xml" href="icon.svg" />
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-background": "#dfe2f1",
+                        "secondary": "#4fdbc8",
+                        "on-tertiary": "#233143",
+                        "on-secondary-fixed": "#00201c",
+                        "surface-tint": "#4edea3",
+                        "error": "#ffb4ab",
+                        "tertiary-container": "#95a4b9",
+                        "on-primary": "#003824",
+                        "tertiary-fixed-dim": "#b9c8de",
+                        "surface-container": "#1c1f2a",
+                        "on-surface-variant": "#bbcabf",
+                        "surface-bright": "#353944",
+                        "surface-container-lowest": "#0a0e18",
+                        "on-primary-fixed": "#002113",
+                        "tertiary": "#b9c8de",
+                        "on-primary-fixed-variant": "#005236",
+                        "primary-fixed": "#6ffbbe",
+                        "on-error": "#690005",
+                        "on-secondary-container": "#003f38",
+                        "error-container": "#93000a",
+                        "primary-container": "#10b981",
+                        "on-secondary": "#003731",
+                        "surface-variant": "#313540",
+                        "background": "#0f131d",
+                        "secondary-container": "#04b4a2",
+                        "surface-dim": "#0f131d",
+                        "on-surface": "#dfe2f1",
+                        "inverse-surface": "#dfe2f1",
+                        "inverse-on-surface": "#2c303b",
+                        "primary-fixed-dim": "#4edea3",
+                        "secondary-fixed": "#71f8e4",
+                        "tertiary-fixed": "#d4e4fa",
+                        "surface-container-low": "#171b26",
+                        "surface": "#0f131d",
+                        "on-error-container": "#ffdad6",
+                        "secondary-fixed-dim": "#4fdbc8",
+                        "outline-variant": "#3c4a42",
+                        "inverse-primary": "#006c49",
+                        "on-secondary-fixed-variant": "#005048",
+                        "on-tertiary-fixed-variant": "#39485a",
+                        "on-tertiary-container": "#2c3a4c",
+                        "primary": "#4edea3",
+                        "surface-container-highest": "#313540",
+                        "surface-container-high": "#262a35",
+                        "on-primary-container": "#00422b",
+                        "outline": "#86948a",
+                        "on-tertiary-fixed": "#0d1c2d"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "container-padding": "24px",
+                        "gutter": "16px",
+                        "unit": "4px",
+                        "section-gap": "40px"
+                    },
+                    "fontFamily": {
+                        "headline-lg-mobile": ["Space Grotesk"],
+                        "headline-lg": ["Space Grotesk"],
+                        "display-metrics": ["Space Grotesk"],
+                        "headline-md": ["Space Grotesk"],
+                        "label-caps": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "body-sm": ["Inter"]
+                    },
+                    "fontSize": {
+                        "headline-lg-mobile": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "fontWeight": "600" }],
+                        "display-metrics": ["48px", { "lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "headline-md": ["20px", { "lineHeight": "28px", "fontWeight": "500" }],
+                        "label-caps": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "body-sm": ["14px", { "lineHeight": "20px", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            transition: background-color 0.4s ease, color 0.4s ease;
+        }
+
+        /* Custom scrollbar for webkit */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(156, 163, 175, 0.3);
+            /* Slate-400 equivalent */
+            border-radius: 4px;
+        }
+
+        .dark ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(156, 163, 175, 0.5);
+        }
+
+        .dark ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* ── Premium Badge Animations ── */
+        @keyframes badge-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            50% { box-shadow: 0 0 12px 4px rgba(16, 185, 129, 0.15); }
+        }
+
+        @keyframes badge-shimmer {
+            0% { background-position: -200% center; }
+            100% { background-position: 200% center; }
+        }
+
+        @keyframes badge-pop {
+            0% { transform: scale(0.8); opacity: 0; }
+            60% { transform: scale(1.08); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes badge-icon-spin {
+            0% { transform: rotateY(0deg); }
+            100% { transform: rotateY(360deg); }
+        }
+
+        .status-badge.verified-active {
+            animation: badge-pulse 2.5s ease-in-out infinite, badge-pop 0.5s ease-out;
+            background-image: linear-gradient(
+                110deg,
+                transparent 0%,
+                transparent 40%,
+                rgba(255,255,255,0.12) 50%,
+                transparent 60%,
+                transparent 100%
+            );
+            background-size: 200% 100%;
+            animation: badge-pulse 2.5s ease-in-out infinite, badge-pop 0.5s ease-out, badge-shimmer 3s ease-in-out infinite 1s;
+        }
+
+        .status-badge.verified-active .badge-icon {
+            animation: badge-icon-spin 0.6s ease-out;
+        }
+
+        .status-badge.danger-active {
+            animation: badge-pop 0.4s ease-out;
+        }
+    </style>
+</head>
+
+<body
+    class="antialiased min-h-screen flex flex-col font-body-lg bg-slate-50 dark:bg-[#0f131d] text-slate-800 dark:text-[#dfe2f1] transition-colors duration-300">
+    <!-- TopAppBar -->
+    <header id="main-header"
+        class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-container-padding h-16 backdrop-blur-md border-b transition-all duration-300"
+        style="background: rgba(255,255,255,0.85); border-color: #e2e8f0;">
+        <div class="flex items-center gap-3 select-none">
+            <img alt="Phebe Kitchen Logo" class="w-14 h-14 rounded-md object-contain pointer-events-none"
+                src="logo.png" draggable="false" />
+            <div class="flex flex-col">
+                <span class="font-headline-md text-headline-md font-bold text-emerald-600 dark:text-primary"
+                    id="header-brand">Phebe <span class="text-slate-500 dark:text-on-surface-variant"
+                        id="header-brand-sub">Kitchen</span></span>
+                <span class="font-label-caps text-label-caps text-slate-500 dark:text-on-surface-variant tracking-wider"
+                    id="header-subtitle">PRECISION PHENYLALANINE ESTIMATOR</span>
+            </div>
+        </div>
+        </div>
+    </header>
+
+    <!-- Main Content Layout -->
+    <main
+        class="flex-1 mt-16 p-container-padding md:p-8 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-6 relative z-10">
+        <!-- Left Column (Calculate & Results) -->
+        <div class="lg:col-span-7 flex flex-col gap-6">
+            <!-- Calculate Meal Card -->
+            <section
+                class="bg-white/90 backdrop-blur-md border border-slate-200 rounded-xl p-6 shadow-sm transition-all duration-300 relative">
+                <h2
+                    class="font-headline-lg text-headline-lg-mobile md:text-headline-lg mb-6 text-slate-800 dark:text-on-background">
+                    Calculate Meal</h2>
+                <form class="space-y-5" id="calc-form">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="space-y-1.5 relative">
+                            <label
+                                class="font-label-caps text-label-caps text-slate-500 dark:text-on-surface-variant uppercase tracking-wider"
+                                for="food-name">Ingredient Name</label>
+                            <div class="relative">
+                                <span
+                                    class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-on-surface-variant">search</span>
+                                <input
+                                    class="w-full bg-slate-100 dark:bg-surface-container border border-slate-200 dark:border-outline-variant rounded-lg py-2.5 pl-10 pr-3 text-slate-800 dark:text-on-surface focus:outline-none focus:border-emerald-600 dark:focus:border-primary focus:ring-1 focus:ring-emerald-600 dark:focus:ring-primary transition-all font-body-sm"
+                                    id="food-name" placeholder="e.g. Banana, Rice, Broccoli" type="text"
+                                    autocomplete="off" required />
+                            </div>
+                            <div id="autocomplete-list"
+                                class="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-surface-container border border-slate-200 dark:border-outline-variant rounded-lg max-h-48 overflow-y-auto z-50 shadow-lg hidden">
+                            </div>
+                        </div>
+                        <div class="space-y-1.5">
+                            <label
+                                class="font-label-caps text-label-caps text-slate-500 dark:text-on-surface-variant uppercase tracking-wider"
+                                for="food-weight">Weight (grams)</label>
+                            <div class="relative">
+                                <span
+                                    class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-on-surface-variant">scale</span>
+                                <input
+                                    class="w-full bg-slate-100 dark:bg-surface-container border border-slate-200 dark:border-outline-variant rounded-lg py-2.5 pl-10 pr-3 text-slate-800 dark:text-on-surface focus:outline-none focus:border-emerald-600 dark:focus:border-primary focus:ring-1 focus:ring-emerald-600 dark:focus:ring-primary transition-all font-body-sm"
+                                    id="food-weight" placeholder="0" type="number" step="any" min="1" required />
+                            </div>
+                        </div>
+                    </div>
+                    <button
+                        class="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-headline-md text-body-lg font-medium rounded-lg py-3 flex items-center justify-center gap-2 transition-all transform active:scale-[0.98] shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+                        type="submit">
+                        Estimate Phe
+                        <span class="material-symbols-outlined text-sm">arrow_forward</span>
+                    </button>
+                </form>
+            </section>
+
+            <!-- Estimation Results Card -->
+            <section
+                class="bg-white/90 dark:bg-[#1c1f2a]/60 backdrop-blur-md border border-slate-200 dark:border-white/10 rounded-xl p-6 shadow-sm dark:shadow-none transition-all duration-300 relative overflow-hidden hidden"
+                id="result-card">
+                <!-- Subtle background accent -->
+                <div class="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-bl-full blur-2xl"></div>
+                <div class="flex justify-between items-start mb-6">
+                    <h2 class="font-headline-md text-headline-md text-slate-800 dark:text-on-background">Estimation
+                        Result</h2>
+                    <span
+                        class="inline-flex items-center gap-1 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-full font-label-caps text-[10px] text-slate-500 status-badge">
+                        <span class="material-symbols-outlined text-[14px]">pending</span>
+                        Awaiting Estimate
+                    </span>
+                </div>
+                <div class="flex flex-col md:flex-row gap-8 items-center md:items-stretch mb-8">
+                    <!-- Metric Display -->
+                    <div class="flex-shrink-0 text-center md:text-left flex flex-col justify-center min-w-[120px]">
+                        <div class="font-display-metrics text-display-metrics text-emerald-600 dark:text-primary leading-none"
+                            id="phe-result">0.0</div>
+                        <div
+                            class="font-label-caps text-label-caps text-slate-500 dark:text-on-surface-variant mt-2 uppercase tracking-wider">
+                            mg Phe Estimated</div>
+                    </div>
+                    <!-- Vertical Divider (Desktop) / Horizontal (Mobile) -->
+                    <div class="hidden md:block w-px bg-slate-200 dark:bg-white/10 self-stretch"></div>
+                    <div class="w-full h-px bg-slate-200 dark:bg-white/10 md:hidden"></div>
+                    <!-- Math Breakdown -->
+                    <div class="flex-grow w-full space-y-3 font-body-sm text-slate-600 dark:text-on-surface-variant">
+                        <ul id="breakdown-list" class="space-y-3">
+                            <!-- Populated by JS -->
+                        </ul>
+                    </div>
+                </div>
+                <button id="log-btn" data-logged="false"
+                    class="w-full md:w-auto bg-slate-100 dark:bg-surface-container border border-slate-200 dark:border-white/10 hover:border-emerald-600/50 hover:bg-slate-200 dark:hover:bg-surface-variant text-slate-800 dark:text-on-surface font-body-lg rounded-lg px-6 py-2.5 flex items-center justify-center gap-2 transition-all">
+                    <span class="material-symbols-outlined">add</span>
+                    Add to Daily Budget
+                </button>
+            </section>
+        </div>
+
+        <!-- Right Column (Budget & Log) -->
+        <div class="lg:col-span-5 flex flex-col h-full">
+            <section
+                class="bg-white/90 dark:bg-[#1c1f2a]/60 backdrop-blur-md border border-slate-200 dark:border-white/10 rounded-xl p-6 h-full flex flex-col shadow-sm dark:shadow-none transition-all duration-300">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="font-headline-md text-headline-md text-slate-800 dark:text-on-background">Daily Phe
+                        Budget</h2>
+                    <div
+                        class="flex items-center gap-2 bg-slate-100 dark:bg-surface-container rounded-lg p-1 border border-slate-200 dark:border-outline-variant">
+                        <label class="sr-only" for="daily-limit">Daily Limit (mg)</label>
+                        <input
+                            class="w-16 bg-transparent border-none text-center font-headline-md focus:ring-0 p-0 m-0 h-7 text-slate-800 dark:text-primary"
+                            id="daily-limit" max="1200" min="50" type="number" value="300" />
+                        <span
+                            class="text-slate-500 dark:text-on-surface-variant font-label-caps text-[10px] pr-2">LIMIT</span>
+                    </div>
+                </div>
+                <!-- Typical Limit display -->
+                <p class="text-xs text-slate-500 dark:text-on-surface-variant mb-4">Typical PKU limit: <strong
+                        id="daily-limit-display" class="text-emerald-600 dark:text-primary">300</strong> mg/day</p>
+
+                <!-- Donut Chart Area -->
+                <div class="relative w-full aspect-square max-w-[240px] mx-auto mb-8 flex items-center justify-center">
+                    <!-- SVG Donut -->
+                    <svg class="w-full h-full transform -rotate-90 drop-shadow-[0_0_8px_rgba(16,185,129,0.4)]"
+                        viewbox="0 0 100 100">
+                        <!-- Background Circle -->
+                        <circle cx="50" cy="50" fill="transparent" r="40" stroke="rgba(0,0,0,0.05)"
+                            class="dark:stroke-white/5" stroke-linecap="round" stroke-width="12"></circle>
+                        <!-- Progress Circle (114/300 = 38%) -->
+                        <circle id="donut-arc" cx="50" cy="50" fill="transparent" r="40" stroke="url(#emeraldGradient)"
+                            stroke-dasharray="251.2" stroke-dashoffset="251.2" stroke-linecap="round" stroke-width="12">
+                        </circle>
+                        <defs>
+                            <linearGradient id="emeraldGradient" x1="0%" x2="100%" y1="0%" y2="100%">
+                                <stop offset="0%" stop-color="#10b981"></stop>
+                                <stop offset="100%" stop-color="#04b4a2"></stop>
+                            </linearGradient>
+                            <linearGradient id="warnGradient" x1="0%" x2="100%" y1="0%" y2="100%">
+                                <stop offset="0%" stop-color="#f59e0b"></stop>
+                                <stop offset="100%" stop-color="#ef4444"></stop>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                    <!-- Center Text -->
+                    <div class="absolute inset-0 flex flex-col items-center justify-center text-center">
+                        <span class="font-display-metrics text-3xl font-bold text-slate-800 dark:text-on-background"
+                            id="budget-used">0</span>
+                        <span
+                            class="font-label-caps text-label-caps text-slate-500 dark:text-on-surface-variant uppercase">mg
+                            used</span>
+                        <div class="h-px w-12 bg-slate-200 dark:bg-white/10 my-1"></div>
+                        <span class="font-body-sm text-emerald-600 dark:text-primary" id="budget-remaining">300 mg
+                            left</span>
+                    </div>
+                </div>
+
+                <!-- Segmented Progress Bar (Macros/Sources) -->
+                <div class="mb-6 space-y-2">
+                    <div
+                        class="flex justify-between font-label-caps text-[10px] text-slate-500 dark:text-on-surface-variant uppercase tracking-wider mb-1">
+                        <span>Source Breakdown</span>
+                    </div>
+                    <div class="h-3 w-full bg-slate-200 dark:bg-white/5 rounded-full overflow-hidden flex"
+                        id="category-breakdown-bar">
+                        <!-- Segments added dynamically via JS -->
+                    </div>
+                    <div class="flex gap-4 pt-1 flex-wrap" id="category-breakdown-labels">
+                        <!-- Label badges added dynamically via JS -->
+                    </div>
+                </div>
+
+                <!-- Safety Track -->
+                <div class="mb-8 space-y-2">
+                    <div
+                        class="flex justify-between font-label-caps text-[10px] text-slate-500 dark:text-on-surface-variant uppercase tracking-wider mb-1">
+                        <span>Safety Zone</span>
+                    </div>
+                    <div class="h-2 w-full bg-slate-200 dark:bg-white/5 rounded-full overflow-hidden flex relative"
+                        id="safety-bar-fill">
+                        <div class="absolute top-0 left-[0%] w-1.5 h-full bg-slate-800 dark:bg-white z-10 rounded-full shadow-[0_0_6px_rgba(255,255,255,0.8)] transition-all duration-500"
+                            id="safety-indicator"></div> <!-- Indicator -->
+                        <div class="h-full bg-emerald-500/60 w-[70%]"></div>
+                        <div class="h-full bg-yellow-500/60 w-[20%]"></div>
+                        <div class="h-full bg-red-500/60 w-[10%]"></div>
+                    </div>
+                    <div
+                        class="flex justify-between font-label-caps text-[10px] text-slate-500 dark:text-on-surface-variant px-1">
+                        <span class="safety-label safe active">Safe</span>
+                        <span class="safety-label warn">Caution</span>
+                        <span class="safety-label danger">Exceeded</span>
+                    </div>
+                </div>
+
+                <!-- Log List -->
+                <div class="mt-auto">
+                    <div
+                        class="flex justify-between items-center mb-3 border-b border-slate-200 dark:border-white/10 pb-2">
+                        <h3 class="font-headline-md text-[16px] text-slate-800 dark:text-on-background">Today's Log</h3>
+                        <button
+                            class="text-slate-500 dark:text-on-surface-variant hover:text-error transition-colors p-1 flex items-center"
+                            title="Reset Daily Log" id="reset-btn">
+                            <span class="material-symbols-outlined text-[18px]">restart_alt</span>
+                        </button>
+                    </div>
+                    <div class="space-y-2 max-h-[150px] overflow-y-auto pr-2" id="meal-log-list">
+                        <div
+                            class="log-empty text-center text-slate-500 dark:text-on-surface-variant font-body-sm italic py-4">
+                            No meals logged yet</div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+    <script src="app.js"></script>
+</body>
+
+</html>
