@@ -34,11 +34,54 @@ const FOODS_JSON = [
     {"key": "tomatoes red ripe raw", "description": "Tomatoes, red, ripe, raw, year round average", "phe_mg_per_100g": 27.0, "protein_g_per_100g": 0.88, "class": "fruit protein"}
 ];
 
-// Serverless Clinical Phe Estimator (perfect port of Python precision_yield_estimator.py)
-function estimatePheLocal(foodName, weight) {
-    const n = foodName.toLowerCase();
+// Manual classification constants matching Path B fallback in precision_yield_estimator.py
+const MANUAL_CATEGORIES = {
+    'fruit': { class: 'fruit protein', protein_pct: 0.7, ratio: 31.5 },
+    'veg': { class: 'vegetable protein', protein_pct: 1.8, ratio: 36.8 },
+    'cereal': { class: 'cereal protein', protein_pct: 6.8, ratio: 54.7 },
+    'starch': { class: 'refined starch', protein_pct: 0.3, ratio: 0.0 },
+    'tuber': { class: 'tuber/root starch', protein_pct: 1.6, ratio: 45.3 }
+};
+
+// Portion units conversion to grams based on representative food density
+function convertToGrams(foodName, quantity, unit) {
+    const q = parseFloat(quantity);
+    if (isNaN(q) || q <= 0) return 0;
+    if (unit === 'g') return q;
+    if (unit === 'oz') return q * 28.35;
     
-    // Fuzzy stem match (mirrors foodlist.py exactly)
+    const n = foodName.toLowerCase().trim();
+    if (unit === 'cup') {
+        if (n.includes('banana')) return q * 150;
+        if (n.includes('apple')) return q * 125;
+        if (n.includes('strawberr')) return q * 150;
+        if (n.includes('tomato')) return q * 180;
+        if (n.includes('broccoli')) return q * 90;
+        if (n.includes('carrot')) return q * 120;
+        if (n.includes('cucumber')) return q * 150;
+        if (n.includes('rice')) return q * 195;
+        if (n.includes('starch') || n.includes('tapioca') || n.includes('flour')) return q * 120;
+        return q * 150; // Generic fallback
+    }
+    
+    if (unit === 'piece') {
+        if (n.includes('banana')) return q * 120;
+        if (n.includes('apple')) return q * 180;
+        if (n.includes('strawberr')) return q * 12;
+        if (n.includes('tomato')) return q * 120;
+        if (n.includes('broccoli')) return q * 15;
+        if (n.includes('carrot')) return q * 60;
+        if (n.includes('cucumber')) return q * 200;
+        return q * 100; // Generic fallback
+    }
+    return q;
+}
+
+// Serverless Clinical Phe Estimator (perfect port of Python precision_yield_estimator.py)
+function estimatePheLocal(foodName, weight, manualSource = '') {
+    const n = foodName.toLowerCase().trim();
+    
+    // 1. Pre-verified database lookup
     let matchedRow = null;
     for (const row of FOODS_JSON) {
         const parts = row.key.split(/[ _]/);
@@ -53,6 +96,33 @@ function estimatePheLocal(foodName, weight) {
         }
     }
 
+    // 2. If no database match, check manual override dropdown selection
+    if (!matchedRow && manualSource && MANUAL_CATEGORIES[manualSource]) {
+        const categoryData = MANUAL_CATEGORIES[manualSource];
+        const phe100 = categoryData.protein_pct * categoryData.ratio;
+        const recipe_factor = (phe100 * weight) / 100.0;
+        const phe_mg = Math.max(recipe_factor * 1.04, recipe_factor + 1.5);
+        return {
+            phe_mg: Math.round(phe_mg * 10) / 10,
+            meta: {
+                recipe_factor_mg_per_serving: Math.round(recipe_factor * 10) / 10,
+                serving_size_g: weight,
+                portion_g: weight,
+                countable: null,
+                protein_g_per_serving: null,
+                path: "manual source override (Path B fallback)",
+                ingredients_considered: [{
+                    name: foodName || manualSource,
+                    phe_source_class: "whole food (food-list)", // Allow logging!
+                    est_share: 1.0
+                }],
+                phe_mg_per_100g: phe100,
+                class: categoryData.class
+            }
+        };
+    }
+
+    // 3. Fallback to unverified/unsafe if neither database match nor manual override
     if (!matchedRow) {
         return {
             phe_mg: 0.0,
@@ -91,13 +161,22 @@ function estimatePheLocal(foodName, weight) {
                 name: foodName,
                 phe_source_class: "whole food (food-list)",
                 est_share: 1.0
-            }]
+            }],
+            phe_mg_per_100g: phe100,
+            class: matchedRow.class
         }
     };
 }
 
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Set current date in header and budget info
+    const currentDateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const headerDate = document.getElementById('header-date');
+    if (headerDate) headerDate.textContent = currentDateStr;
+    const budgetDate = document.getElementById('budget-date');
+    if (budgetDate) budgetDate.textContent = currentDateStr;
+
     const form = document.getElementById('calc-form');
     const resultCard = document.getElementById('result-card');
     const pheResult = document.getElementById('phe-result');
@@ -114,10 +193,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Always light mode
+    // Always light mode, but styled using M3 clinical theme
     document.documentElement.classList.remove('dark');
-    document.body.style.backgroundColor = '#f8fafc';
-    document.body.style.color = '#0f172a';
+    document.body.style.backgroundColor = '#f4fbf4';
+    document.body.style.color = '#161d19';
 
     // ── Autocomplete Logic ────────────────────────────────────────────────
     foodNameInput.addEventListener('input', function() {
@@ -128,13 +207,6 @@ document.addEventListener('DOMContentLoaded', () => {
             autocompleteList.classList.add('hidden');
             return;
         }
-        
-        const isDark = document.documentElement.classList.contains('dark');
-        
-        // Style the dropdown container per theme
-        autocompleteList.style.backgroundColor = isDark ? '#1c1f2a' : '#ffffff';
-        autocompleteList.style.borderColor = isDark ? 'rgba(60,74,66,0.8)' : '#e2e8f0';
-        autocompleteList.style.color = isDark ? '#dfe2f1' : '#1e293b';
         
         let hasMatches = false;
         for (const key of Object.keys(FOOD_DATABASE)) {
@@ -148,25 +220,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 const match = key.substring(matchIndex, matchIndex + val.length);
                 const after = key.substring(matchIndex + val.length);
                 
-                item.innerHTML = `${before}<strong class="text-emerald-600 dark:text-primary">${match}</strong>${after}`;
-                
-                // Apply direct styles for theme awareness
+                item.innerHTML = `${before}<strong class="text-primary font-bold">${match}</strong>${after}`;
                 item.style.cssText = `
-                    padding: 8px 16px;
+                    padding: 10px 16px;
                     cursor: pointer;
                     font-size: 14px;
-                    border-bottom: 1px solid ${isDark ? 'rgba(255,255,255,0.05)' : '#f1f5f9'};
-                    color: ${isDark ? '#dfe2f1' : '#1e293b'};
+                    border-bottom: 1px solid #dde4dd;
+                    color: #161d19;
                     transition: background 0.15s ease, color 0.15s ease;
                 `;
                 
                 item.addEventListener('mouseenter', () => {
-                    item.style.backgroundColor = isDark ? 'rgba(78,222,163,0.12)' : 'rgba(5,150,105,0.08)';
-                    item.style.color = isDark ? '#4edea3' : '#059669';
+                    item.style.backgroundColor = 'rgba(0,108,74,0.08)';
+                    item.style.color = '#006c4a';
                 });
                 item.addEventListener('mouseleave', () => {
                     item.style.backgroundColor = '';
-                    item.style.color = isDark ? '#dfe2f1' : '#1e293b';
+                    item.style.color = '#161d19';
                 });
                 item.addEventListener('click', function() {
                     foodNameInput.value = key;
@@ -199,8 +269,9 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         if (isEstimating) return;
         
-        const foodNameVal = foodNameInput.value.toLowerCase().trim();
+        const foodNameVal = foodNameInput.value.trim();
         const foodWeight = parseFloat(foodWeightInput.value);
+        const foodUnit = document.getElementById('food-unit').value;
         
         // Clear any previous errors
         foodNameInput.style.borderColor = '';
@@ -217,21 +288,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Validate weight (must be > 0)
         if (isNaN(foodWeight) || foodWeight <= 0) {
-            foodWeightInput.style.borderColor = '#ef4444';
-            foodWeightInput.style.boxShadow = '0 0 0 2px rgba(239,68,68,0.2)';
+            foodWeightInput.style.borderColor = '#ba1a1a';
+            foodWeightInput.style.boxShadow = '0 0 0 2px rgba(186,26,26,0.2)';
             let errMsg = document.createElement('p');
             errMsg.id = 'food-weight-error';
-            errMsg.style.cssText = 'color:#ef4444;font-size:12px;margin-top:4px;';
+            errMsg.style.cssText = 'color:#ba1a1a;font-size:12px;margin-top:4px;font-family:Inter;';
             errMsg.textContent = 'Please enter a valid positive weight.';
             foodWeightInput.parentElement.after(errMsg);
             hasError = true;
         }
 
-        // Validate food name
+        // Validate food name (either database lookup or custom name with manual protein source override)
+        let finalMatchedKey = '';
         if (!foodNameVal) {
             hasError = true;
         } else {
             let matchedKey = null;
+            const n = foodNameVal.toLowerCase();
             for (const key of Object.keys(FOOD_DATABASE)) {
                 const parts = key.split(/[ _]/);
                 let stem = parts[0].toLowerCase();
@@ -239,24 +312,25 @@ document.addEventListener('DOMContentLoaded', () => {
                     stem = stem.slice(0, -1);
                 }
                 const stem6 = stem.slice(0, 6);
-                if (stem6 && foodNameVal.includes(stem6)) {
+                if (stem6 && n.includes(stem6)) {
                     matchedKey = key;
                     break;
                 }
             }
 
             if (!matchedKey) {
-                foodNameInput.style.borderColor = '#ef4444';
-                foodNameInput.style.boxShadow = '0 0 0 2px rgba(239,68,68,0.2)';
+                foodNameInput.style.borderColor = '#ba1a1a';
+                foodNameInput.style.boxShadow = '0 0 0 2px rgba(186,26,26,0.2)';
                 let errMsg = document.createElement('p');
                 errMsg.id = 'food-name-error';
-                errMsg.style.cssText = 'color:#ef4444;font-size:12px;margin-top:4px;';
+                errMsg.style.cssText = 'color:#ba1a1a;font-size:12px;margin-top:4px;font-family:Inter;';
                 foodNameInput.parentElement.after(errMsg);
                 errMsg.textContent = `"${foodNameVal}" is not in the verified food list. Please pick from the dropdown suggestions.`;
                 hasError = true;
             } else {
                 // Normalize input value to matching database key
                 foodNameInput.value = matchedKey;
+                finalMatchedKey = matchedKey;
             }
         }
 
@@ -264,22 +338,27 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Show loading state
         breakdownList.innerHTML = '';
-        pheResult.innerHTML = '<span class="material-symbols-outlined animate-spin text-2xl">sync</span>';
-        resultCard.classList.remove('hidden');
+        pheResult.innerHTML = '<span class="material-symbols-outlined animate-spin text-3xl">sync</span>';
+        resultCard.classList.remove('visible'); // Hide previous result with style display rules
+        void resultCard.offsetWidth; // Force layout recalculation
+        resultCard.classList.add('visible');
 
-        const submitBtn = form.querySelector('button[type="submit"]');
+        const submitBtn = document.getElementById('submit-btn');
         isEstimating = true;
         if (submitBtn) {
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<span class="material-symbols-outlined animate-spin text-sm">sync</span> Estimating...';
-            submitBtn.style.opacity = '0.7';
+            submitBtn.style.opacity = '0.75';
         }
         
         try {
-            // Minimum 400ms loading so user SEES the spinner (visual feedback on re-estimate)
+            // Apply unit conversion to get weight in grams
+            const weightGrams = convertToGrams(finalMatchedKey, foodWeight, foodUnit);
+
+            // Minimum 400ms loading so user SEES the spinner
             const [data] = await Promise.all([
                 new Promise(resolve => {
-                    const res = estimatePheLocal(foodNameVal, foodWeight);
+                    const res = estimatePheLocal(finalMatchedKey, weightGrams);
                     resolve(res);
                 }),
                 new Promise(r => setTimeout(r, 400))
@@ -288,88 +367,77 @@ document.addEventListener('DOMContentLoaded', () => {
             const phe = data.phe_mg;
             const meta = data.meta;
             
-            // Render Result with pop animation (shows user it was recalculated)
+            // Render Result with pop animation
             pheResult.innerText = phe.toFixed(1);
-            pheResult.style.transition = 'transform 0.2s ease, opacity 0.2s ease';
-            pheResult.style.transform = 'scale(1.15)';
-            pheResult.style.opacity = '0.7';
-            setTimeout(() => {
-                pheResult.style.transform = 'scale(1)';
-                pheResult.style.opacity = '1';
-            }, 200);
+            pheResult.classList.remove('num-pop');
+            void pheResult.offsetWidth; // reflow
+            pheResult.classList.add('num-pop');
             
-            // Add breakdown items based on backend response
             const considered = meta.ingredients_considered || [];
             const isSafe = considered.length > 0 && considered.every(i => i.phe_source_class === 'whole food (food-list)');
             
+            const badge = document.querySelector('.status-badge');
             if (isSafe) {
                 // Clinically Verified — show log button
                 logBtn.classList.remove('hidden');
                 
-                const badge = document.querySelector('.status-badge');
-                badge.innerHTML = `<span class="material-symbols-outlined badge-icon" style="font-size:14px;font-variation-settings:'FILL' 1;color:#059669;">verified</span> Clinically Verified`;
-                badge.className = 'status-badge verified-active';
-                badge.style.cssText = `
-                    display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; border-radius: 9999px;
-                    font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
-                    background-color: rgba(5,150,105,0.08);
-                    border: 1px solid rgba(5,150,105,0.2);
-                    color: #059669;
-                `;
+                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(0,108,74,0.6)]"></span><span class="font-label-caps text-[10px] leading-tight font-bold tracking-wider">Clinically Verified</span>`;
+                badge.className = 'status-badge badge-verified inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border';
+                badge.style.cssText = 'background:rgba(232,245,240,0.85); border-color:rgba(0,108,74,0.22); color:#006c4a;';
                 
-                addBreakdownItem('nutrition', 'Food', capitalize(foodNameVal));
-                addBreakdownItem('scale', 'Amount', `${meta.portion_g}g`);
-                addBreakdownItem('biotech', 'Estimated Phe', `${meta.recipe_factor_mg_per_serving} mg (before safety)`);
-                addBreakdownItem('shield', 'Safety Buffer Added', '<strong style="color:#059669;">Yes ✔</strong>');
+                addBreakdownItem('Food Type', capitalize(meta.class || 'whole food'));
+                addBreakdownItem('Amount', `${meta.portion_g.toFixed(0)}g (${foodWeight} ${foodUnit})`);
+                if (meta.phe_mg_per_100g > 0) {
+                    addBreakdownItem('Base Phe/100g', `${meta.phe_mg_per_100g.toFixed(1)} mg`);
+                } else {
+                    addBreakdownItem('Base Phe/100g', 'Negligible');
+                }
+                addBreakdownItem('Safety Buffer', 'Applied ✔', true);
                 
+                // Keep the converted gram weight for budget logging
                 lastEstimate = {
-                    name: foodNameVal,
+                    name: finalMatchedKey,
                     phe: phe,
-                    class: meta.ingredients_considered[0]?.phe_source_class || 'unknown',
-                    weight: foodWeight
+                    class: meta.class || 'whole food',
+                    weight: Math.round(weightGrams)
                 };
                 
                 logBtn.dataset.logged = 'false';
             } else {
                 // Needs review — hide log button, user cannot add unverified food to budget
                 logBtn.classList.add('hidden');
-                // Needs review
-                const badge = document.querySelector('.status-badge');
-                badge.innerHTML = `<span class="material-symbols-outlined badge-icon" style="font-size:14px;font-variation-settings:'FILL' 1;color:#d97706;">info</span> Needs Review`;
-                badge.className = 'status-badge danger-active';
-                badge.style.cssText = `
-                    display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; border-radius: 9999px;
-                    font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
-                    background-color: rgba(217,119,6,0.08);
-                    border: 1px solid rgba(217,119,6,0.25);
-                    color: #d97706;
-                `;
                 
-                addBreakdownItem('info', 'Status', '<span style="color:#d97706;font-weight:500;">Consult your dietitian for this food</span>');
+                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-error shadow-[0_0_8px_rgba(186,26,26,0.6)]"></span><span class="font-label-caps text-[10px] leading-tight font-bold tracking-wider">Needs Review</span>`;
+                badge.className = 'status-badge badge-warn inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border';
+                badge.style.cssText = 'background:rgba(255,218,214,0.8); border-color:rgba(186,26,26,0.25); color:#ba1a1a;';
+                
+                addBreakdownItem('Food Type', 'Unverified/Custom');
+                addBreakdownItem('Amount', `${weightGrams.toFixed(0)}g`);
+                addBreakdownItem('Base Phe/100g', 'Unknown');
+                addBreakdownItem('Status', 'Consult your dietitian', true);
                 
                 lastEstimate = null;
             }
             
+            // Scroll to view the result card smoothly
+            setTimeout(() => {
+                resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 80);
+            
         } catch (err) {
             console.error(err);
             pheResult.innerText = '--';
-            resultCard.classList.add('hidden');
-            // Show a gentle inline error on the form
-            let errBanner = document.getElementById('form-error-banner');
-            if (!errBanner) {
-                errBanner = document.createElement('div');
-                errBanner.id = 'form-error-banner';
-                errBanner.style.cssText = 'margin-top:12px;padding:10px 14px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:8px;color:#dc2626;font-size:13px;display:flex;align-items:center;gap:8px;';
-                errBanner.innerHTML = '<span class="material-symbols-outlined" style="font-size:16px;">wifi_off</span> Could not calculate right now. Please try again.';
-                form.appendChild(errBanner);
-                setTimeout(() => errBanner.remove(), 4000);
-            }
+            resultCard.classList.remove('visible');
             lastEstimate = null;
         } finally {
             isEstimating = false;
             if (submitBtn) {
                 submitBtn.disabled = false;
-                submitBtn.innerHTML = 'Estimate Phe <span class="material-symbols-outlined text-sm">arrow_forward</span>';
+                submitBtn.innerHTML = `
+                    <span class="material-symbols-outlined icon-fill text-white" style="font-size:18px;">auto_awesome</span>
+                    <span class="flex-1 text-left">Estimate Phe</span>
+                    <span class="material-symbols-outlined text-white" style="font-size:18px;" id="btn-icon">arrow_forward</span>
+                `;
                 submitBtn.style.opacity = '';
             }
         }
@@ -399,36 +467,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderMealLogItem(meal) {
         function getIconForClass(foodClass) {
-            if (!foodClass) return { name: 'help_center', bg: 'bg-slate-100 dark:bg-slate-500/10', color: 'text-slate-500 dark:text-slate-400' };
+            if (!foodClass) return { name: 'help_center', bg: 'rgba(108,122,113,0.1)', color: 'text-outline' };
             const fc = foodClass.toLowerCase();
             
-            if (fc.includes('cereal') || fc.includes('starch')) return { name: 'bakery_dining', bg: 'bg-amber-100 dark:bg-amber-500/10', color: 'text-amber-600 dark:text-amber-400' };
-            if (fc.includes('fruit')) return { name: 'nutrition', bg: 'bg-orange-100 dark:bg-orange-500/10', color: 'text-orange-600 dark:text-orange-400' };
-            if (fc.includes('veg') || fc.includes('legume')) return { name: 'eco', bg: 'bg-emerald-100 dark:bg-emerald-500/10', color: 'text-emerald-600 dark:text-emerald-400' };
-            if (fc.includes('dairy')) return { name: 'water_drop', bg: 'bg-blue-100 dark:bg-blue-500/10', color: 'text-blue-600 dark:text-blue-400' };
-            if (fc.includes('whole food')) return { name: 'verified', bg: 'bg-emerald-100 dark:bg-emerald-500/10', color: 'text-emerald-600 dark:text-emerald-400' };
+            if (fc.includes('cereal') || fc.includes('grain')) return { name: 'bakery_dining', bg: 'rgba(59,130,246,0.1)', color: 'text-blue-500' };
+            if (fc.includes('starch')) return { name: 'water_drop', bg: 'rgba(168,85,247,0.1)', color: 'text-purple-500' };
+            if (fc.includes('fruit')) return { name: 'nutrition', bg: 'rgba(249,115,22,0.1)', color: 'text-orange-500' };
+            if (fc.includes('veg') || fc.includes('legume')) return { name: 'eco', bg: 'rgba(0,108,74,0.1)', color: 'text-primary' };
             
-            return { name: 'help_center', bg: 'bg-slate-100 dark:bg-slate-500/10', color: 'text-slate-500 dark:text-slate-400' };
+            return { name: 'help_center', bg: 'rgba(108,122,113,0.1)', color: 'text-outline' };
         }
         
         const ico = getIconForClass(meal.class);
 
         const div = document.createElement('div');
-        div.className = 'flex justify-between items-center bg-white dark:bg-surface-container rounded-lg p-2.5 border border-slate-200 dark:border-white/5 group transition-all';
+        div.className = 'glass-card p-3 rounded-lg flex items-center justify-between border-b border-black/5 log-in';
         div.innerHTML = `
             <div class="flex items-center gap-3">
-                <div class="${ico.bg} p-1.5 rounded-md ${ico.color} flex items-center justify-center">
-                    <span class="material-symbols-outlined text-[16px]">${ico.name}</span>
+                <div class="w-10 h-10 rounded-full ${ico.bg} flex items-center justify-center">
+                    <span class="material-symbols-outlined ${ico.color}">${ico.name}</span>
                 </div>
-                <div class="flex flex-col">
-                    <span class="font-body-sm text-slate-800 dark:text-on-surface">${capitalize(meal.name)}</span>
-                    <span class="font-label-caps text-[10px] text-slate-500 dark:text-on-surface-variant">${capitalize(meal.class)} • ${meal.weight}g</span>
+                <div>
+                    <p class="font-body-md font-semibold text-on-surface">${capitalize(meal.name)}</p>
+                    <p class="font-body-sm text-on-surface-variant">${meal.weight}g • ${capitalize(meal.class)}</p>
                 </div>
             </div>
-            <div class="flex items-center gap-3">
-                <span class="font-body-lg font-medium text-emerald-600 dark:text-primary">+${meal.phe.toFixed(1)}</span>
-                <button class="delete-log-btn text-slate-400 hover:text-rose-500 p-1 rounded-full flex items-center justify-center" title="Delete this entry">
-                    <span class="material-symbols-outlined text-[16px]">close</span>
+            <div class="flex items-center gap-4">
+                <span class="font-numeric-data text-body-md text-on-surface font-semibold">+${meal.phe.toFixed(1)} mg</span>
+                <button class="delete-log-btn text-on-surface-variant hover:text-error transition-colors p-1" title="Delete this entry">
+                    <span class="material-symbols-outlined text-[20px]">delete</span>
                 </button>
             </div>
         `;
@@ -443,11 +510,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
             mealLog = mealLog.filter(item => item.id !== meal.id);
 
-            div.remove();
-            
-            if (mealLogList.children.length === 0) {
-                mealLogList.innerHTML = '<div class="log-empty text-center text-slate-500 font-body-sm italic py-4">No meals logged yet</div>';
-            }
+            // Add slide out animation before removing
+            div.style.transition = 'opacity 0.2s, transform 0.2s';
+            div.style.opacity = '0';
+            div.style.transform = 'translateX(10px)';
+            setTimeout(() => {
+                div.remove();
+                if (mealLogList.children.length === 0) {
+                    mealLogList.innerHTML = `
+                        <div class="log-empty flex flex-col items-center justify-center py-10 text-center">
+                          <span class="material-symbols-outlined icon-fill mb-2" style="font-size:36px; color:#bbcac0;">restaurant_menu</span>
+                          <p style="font-size:13px; color:#6c7a71; font-family:'Inter'; font-style:italic;">No meals logged yet</p>
+                        </div>
+                    `;
+                    document.getElementById('log-total-row').classList.add('hidden');
+                    document.getElementById('log-total-row').classList.remove('flex');
+                } else {
+                    document.getElementById('log-total-phe').textContent = `${Math.round(dailyUsed)} mg`;
+                }
+            }, 200);
 
             logBtn.dataset.logged = 'false';
 
@@ -457,19 +538,29 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         mealLogList.appendChild(div);
+        
+        // Show Total row
+        const totalRow = document.getElementById('log-total-row');
+        if (totalRow) {
+            totalRow.classList.remove('hidden');
+            totalRow.classList.add('flex');
+            document.getElementById('log-total-phe').textContent = `${Math.round(dailyUsed)} mg`;
+        }
     }
 
     const donutArc          = document.getElementById('donut-arc');
     const budgetUsed        = document.getElementById('budget-used');
+    const legendUsed        = document.getElementById('legend-used');
     const budgetRem         = document.getElementById('budget-remaining');
     const safetyIndicator   = document.getElementById('safety-indicator');
     const mealLogList       = document.getElementById('meal-log-list');
     const limitInput        = document.getElementById('daily-limit');
     const limitDisplay      = document.getElementById('daily-limit-display');
+    const legendLimit       = document.getElementById('legend-limit');
     const breakdownBar      = document.getElementById('category-breakdown-bar');
     const breakdownLabels   = document.getElementById('category-breakdown-labels');
 
-    const CIRCUMFERENCE = 251.2; // 2 * PI * 40 (matches new radius of 40)
+    const CIRCUMFERENCE = 263.9; // 2 * PI * 42 (radius of 42)
 
     function updateBudgetUI() {
         const limit = parseFloat(limitInput.value) || 300;
@@ -478,38 +569,69 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Donut arc
         donutArc.style.strokeDashoffset = offset;
-        budgetUsed.textContent = Math.round(dailyUsed);
+        
+        // Update used indicators
+        const roundedUsed = Math.round(dailyUsed);
+        budgetUsed.textContent = roundedUsed;
+        if (legendUsed) legendUsed.textContent = roundedUsed;
+        
+        // Update limits
+        if (limitDisplay) limitDisplay.textContent = Math.round(limit);
+        if (legendLimit) legendLimit.textContent = Math.round(limit);
         
         const remaining = Math.max(limit - dailyUsed, 0);
-        budgetRem.textContent = remaining > 0
-            ? `${Math.round(remaining)} mg left`
-            : '⚠ Limit Reached';
+        budgetRem.textContent = `${Math.round(remaining)} mg`;
 
-        // Color transitions based on ratio
+        // Update Log Tab Stats
+        const roundedRem = Math.round(remaining);
+        document.querySelectorAll('.log-stat-used').forEach(el => el.textContent = roundedUsed);
+        document.querySelectorAll('.log-stat-rem').forEach(el => el.textContent = roundedRem);
+        document.querySelectorAll('.log-stat-limit').forEach(el => el.textContent = Math.round(limit));
+
+        // Safety indicators
+        const safetyBanner = document.getElementById('safety-banner');
+        const safetyIcon   = document.getElementById('safety-icon');
+        const safetyText   = document.getElementById('safety-text');
+        
         const safeLabels = document.querySelectorAll('.safety-label');
         safeLabels.forEach(l => {
-            l.className = l.className.replace(' active font-bold text-primary text-yellow-500 text-error', '');
-            l.style.opacity = '0.4';
+            l.style.opacity = '0.5';
+            l.style.fontWeight = '500';
         });
 
         if (ratio < 0.7) {
-            donutArc.setAttribute('stroke', 'url(#emeraldGradient)');
-            budgetRem.className = 'font-body-sm text-primary';
-            safeLabels[0].className += ' active font-bold text-primary';
-            safeLabels[0].style.opacity = '1';
+            donutArc.setAttribute('stroke', 'url(#arcGrad)');
+            if (safeLabels[0]) { safeLabels[0].style.opacity = '1'; safeLabels[0].style.fontWeight = '700'; }
+            
+            // Safety banner
+            if (safetyBanner) {
+                safetyBanner.className = 'safety-safe flex items-start gap-3 p-3.5 rounded-xl border mb-5 transition-all duration-300';
+                if (safetyIcon) { safetyIcon.textContent = 'verified_user'; safetyIcon.style.color = '#006c4a'; }
+                if (safetyText) { safetyText.textContent = 'You are within your daily phenylalanine budget.'; safetyText.style.color = '#006c4a'; }
+            }
         } else if (ratio < 1.0) {
-            donutArc.setAttribute('stroke', 'url(#warnGradient)');
-            budgetRem.className = 'font-body-sm text-yellow-500';
-            safeLabels[1].className += ' active font-bold text-yellow-500';
-            safeLabels[1].style.opacity = '1';
+            donutArc.setAttribute('stroke', 'url(#warnGrad)');
+            if (safeLabels[1]) { safeLabels[1].style.opacity = '1'; safeLabels[1].style.fontWeight = '700'; }
+            
+            // Safety banner
+            if (safetyBanner) {
+                safetyBanner.className = 'safety-caution flex items-start gap-3 p-3.5 rounded-xl border mb-5 transition-all duration-300';
+                if (safetyIcon) { safetyIcon.textContent = 'warning'; safetyIcon.style.color = '#eab308'; }
+                if (safetyText) { safetyText.textContent = 'Approaching daily phenylalanine limit. Exercise caution.'; safetyText.style.color = '#a16207'; }
+            }
         } else {
-            donutArc.setAttribute('stroke', '#ffb4ab');
-            budgetRem.className = 'font-body-sm text-error';
-            safeLabels[2].className += ' active font-bold text-error';
-            safeLabels[2].style.opacity = '1';
+            donutArc.setAttribute('stroke', '#ba1a1a');
+            if (safeLabels[2]) { safeLabels[2].style.opacity = '1'; safeLabels[2].style.fontWeight = '700'; }
+            
+            // Safety banner
+            if (safetyBanner) {
+                safetyBanner.className = 'safety-danger flex items-start gap-3 p-3.5 rounded-xl border mb-5 transition-all duration-300';
+                if (safetyIcon) { safetyIcon.textContent = 'dangerous'; safetyIcon.style.color = '#ba1a1a'; }
+                if (safetyText) { safetyText.textContent = 'Daily phenylalanine limit exceeded! Avoid further high-Phe foods.'; safetyText.style.color = '#ba1a1a'; }
+            }
         }
 
-        // Safety indicator left offset percentage (cap at 100%)
+        // Safety indicator dot positioning (cap at 100%)
         safetyIndicator.style.left = `${Math.min(ratio * 100, 100)}%`;
     }
 
@@ -526,19 +648,19 @@ document.addEventListener('DOMContentLoaded', () => {
         breakdownBar.style.display = 'flex';
 
         const colors = {
-            fruit: 'bg-orange-400/80',
-            veg: 'bg-emerald-500/80',
-            cereal: 'bg-blue-500/80',
-            starch: 'bg-purple-500/80',
-            unknown: 'bg-slate-500/80'
+            fruit: 'bg-[#f97316]',
+            veg: 'bg-primary',
+            cereal: 'bg-[#3b82f6]',
+            starch: 'bg-[#a855f7]',
+            unknown: 'bg-[#6c7a71]'
         };
 
         const dotColors = {
-            fruit: 'bg-orange-400',
-            veg: 'bg-emerald-500',
-            cereal: 'bg-blue-500',
-            starch: 'bg-purple-500',
-            unknown: 'bg-slate-500'
+            fruit: 'bg-[#f97316]',
+            veg: 'bg-primary',
+            cereal: 'bg-[#3b82f6]',
+            starch: 'bg-[#a855f7]',
+            unknown: 'bg-[#6c7a71]'
         };
 
         for (const [cat, val] of Object.entries(categoryTotals)) {
@@ -546,7 +668,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const pct = (val / total) * 100;
                 // Segment in bar
                 const seg = document.createElement('div');
-                seg.className = `h-full ${colors[cat] || 'bg-slate-500/80'} border-r border-background last:border-r-0`;
+                seg.className = `h-full ${colors[cat] || 'bg-[#6c7a71]'} transition-all`;
                 seg.style.width = `${pct}%`;
                 seg.title = `${capitalize(cat)}: ${val.toFixed(1)} mg (${pct.toFixed(0)}%)`;
                 breakdownBar.appendChild(seg);
@@ -555,8 +677,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const badge = document.createElement('div');
                 badge.className = 'flex items-center gap-1.5';
                 badge.innerHTML = `
-                    <div class="w-2 h-2 rounded-full ${dotColors[cat] || 'bg-slate-500/80'}"></div>
-                    <span class="font-label-caps text-[10px] text-slate-800 dark:text-on-surface">${capitalize(cat === 'veg' ? 'Vegetables' : cat === 'cereal' ? 'Grains' : cat)} (${Math.round(pct)}%)</span>
+                    <div class="w-2.5 h-2.5 rounded-full ${dotColors[cat] || 'bg-[#6c7a71]'}"></div>
+                    <span class="font-label-caps text-[10px] text-on-surface-variant uppercase">${cat === 'veg' ? 'VEG' : cat === 'cereal' ? 'GRAINS' : cat} (${Math.round(pct)}%)</span>
                 `;
                 breakdownLabels.appendChild(badge);
             }
@@ -582,6 +704,10 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (fname === 'broccoli' || fname === 'carrot' || fname === 'carrots' || fname === 'cucumber') category = 'veg';
         else if (fname === 'rice') category = 'cereal';
         else if (fname === 'cornstarch' || fname === 'tapioca' || fname === 'potato flour') category = 'starch';
+        else if (foodClass.includes('fruit')) category = 'fruit';
+        else if (foodClass.includes('veg') || foodClass.includes('legume')) category = 'veg';
+        else if (foodClass.includes('cereal') || foodClass.includes('grain')) category = 'cereal';
+        else if (foodClass.includes('starch') || foodClass.includes('tuber')) category = 'starch';
         else category = 'unknown';
 
         const meal = {
@@ -605,16 +731,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
         logBtn.dataset.logged = 'true';
         mealLogList.scrollTop = mealLogList.scrollHeight;
+        showToast(`Logged "${capitalize(foodName)}" to Today's Log!`);
     });
 
-    // Reset button — clears log, budget, and hides result card
-    document.getElementById('reset-btn').addEventListener('click', () => {
+    // Reset logic
+    const resetLogData = () => {
         dailyUsed = 0;
         categoryTotals = { fruit: 0, veg: 0, cereal: 0, starch: 0, unknown: 0 };
         mealLog = [];
-        mealLogList.innerHTML = '<div class="log-empty text-center text-slate-500 font-body-sm italic py-4">No meals logged yet</div>';
         
-        resultCard.classList.add('hidden');
+        mealLogList.innerHTML = `
+            <div class="log-empty flex flex-col items-center justify-center py-12 text-center">
+              <span class="material-symbols-outlined icon-fill mb-3" style="font-size:42px; color:#bbcac0;">restaurant_menu</span>
+              <p style="font-size:14px; color:#6c7a71; font-family:'Inter'; font-style:italic;">No meals logged yet. Use the calculator to estimate a meal and add it here.</p>
+            </div>
+        `;
+        const totalRow = document.getElementById('log-total-row');
+        if (totalRow) {
+            totalRow.classList.add('hidden');
+            totalRow.classList.remove('flex');
+        }
+        
+        resultCard.classList.remove('visible');
         lastEstimate = null;
         logBtn.dataset.logged = 'false';
         logBtn.classList.remove('hidden');
@@ -629,7 +767,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         updateBudgetUI();
         updateCategoryBreakdown();
-    });
+    };
+
+    const resetBtnLog = document.getElementById('reset-btn-log');
+    if (resetBtnLog) {
+        resetBtnLog.addEventListener('click', () => {
+            if (confirm("Are you sure you want to clear today's log?")) {
+                resetLogData();
+                showToast("Consumption log cleared.");
+            }
+        });
+    }
 
     // Daily limit validation
     let lastValidLimit = 300;
@@ -639,7 +787,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (limitInput.value.trim() === '' || isNaN(val)) return;
         const clamped = Math.max(50, Math.min(1200, val));
         lastValidLimit = clamped;
-        limitDisplay.textContent = clamped;
+        
+        // Sync slider
+        const slider = document.getElementById('profile-limit-slider');
+        const sliderVal = document.getElementById('profile-limit-val');
+        if (slider) slider.value = clamped;
+        if (sliderVal) sliderVal.textContent = clamped;
+
         try {
             localStorage.setItem('phebe_daily_limit', clamped.toString());
         } catch (e) {
@@ -655,7 +809,12 @@ document.addEventListener('DOMContentLoaded', () => {
             : Math.max(50, Math.min(1200, val));
         limitInput.value = clamped;
         lastValidLimit = clamped;
-        limitDisplay.textContent = clamped;
+
+        const slider = document.getElementById('profile-limit-slider');
+        const sliderVal = document.getElementById('profile-limit-val');
+        if (slider) slider.value = clamped;
+        if (sliderVal) sliderVal.textContent = clamped;
+
         try {
             localStorage.setItem('phebe_daily_limit', clamped.toString());
         } catch (e) {
@@ -663,6 +822,220 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         updateBudgetUI();
     });
+
+    // ── Navigation (Tabs) ──────────────────────────────────────────────────
+    window.setActiveTab = (tabId) => {
+        // Toggle tab view elements
+        document.querySelectorAll('.tab-view').forEach(view => {
+            if (view.id === `view-${tabId}`) {
+                view.classList.add('active');
+                view.classList.remove('hidden');
+            } else {
+                view.classList.remove('active');
+                view.classList.add('hidden');
+            }
+        });
+
+        // Toggle Desktop Tab button styles
+        const desktopTabs = ['home', 'log'];
+        desktopTabs.forEach(t => {
+            const btn = document.getElementById(`dtab-${t}`);
+            if (!btn) return;
+            if (t === tabId) {
+                btn.className = "px-4 py-1.5 rounded-lg text-sm font-semibold transition-all bg-primary text-white shadow-sm";
+            } else {
+                btn.className = "px-4 py-1.5 rounded-lg text-sm font-semibold transition-all text-on-surface-variant hover:text-primary hover:bg-primary/5";
+            }
+        });
+
+        // Toggle Mobile Tab button styles
+        desktopTabs.forEach(t => {
+            const btn = document.getElementById(`mtab-${t}`);
+            if (!btn) return;
+            const icon = btn.querySelector('.material-symbols-outlined');
+            if (t === tabId) {
+                btn.style.background = 'rgba(0,108,74,0.1)';
+                btn.style.color = '#006c4a';
+                if (icon) icon.classList.add('icon-fill');
+            } else {
+                btn.style.background = 'none';
+                btn.style.color = '#6c7a71';
+                if (icon) icon.classList.remove('icon-fill');
+            }
+        });
+
+        // Auto scroll to top on change
+        window.scrollTo({ top: 0, behavior: 'instant' });
+    };
+
+    // ── Toast Notifications ──────────────────────────────────────────────
+    function showToast(message) {
+        const toast = document.getElementById('toast-message');
+        if (toast) {
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2500);
+        }
+    }
+
+    // ── Recipes Database & Dynamic Loading ──────────────────────────────
+    const PKU_RECIPES = [
+        {
+            id: 'rec_rice_bowl',
+            name: "Classic Low-Protein Rice Bowl",
+            category: "grain",
+            class: "cereal protein",
+            weight: 200,
+            phe: 210.0,
+            ingredients: "Rice (50g), Carrot (50g), Cucumber (50g), Cornstarch (50g)",
+            instructions: "Cook rice separately. Stir-fry finely chopped carrots and cucumber. Mix in cornstarch as binder."
+        },
+        {
+            id: 'rec_fruit_salad',
+            name: "Fresh Summer Fruit Salad",
+            category: "fruit",
+            class: "fruit protein",
+            weight: 180,
+            phe: 45.0,
+            ingredients: "Strawberry (60g), Apple (60g), Banana (60g)",
+            instructions: "Wash and dice all fruits. Toss gently in a bowl. Serve chilled."
+        },
+        {
+            id: 'rec_tapioca',
+            name: "Creamy Tapioca Dessert",
+            category: "starch",
+            class: "refined starch",
+            weight: 150,
+            phe: 5.0,
+            ingredients: "Tapioca Pearl (120g), Sugar & Water (30g)",
+            instructions: "Boil tapioca pearls in water until translucent. Sweeten with sugar and chill."
+        },
+        {
+            id: 'rec_stir_fry',
+            name: "Stir-Fried Veggies & Potato Flour",
+            category: "vegetable",
+            class: "vegetable protein",
+            weight: 200,
+            phe: 320.0,
+            ingredients: "Broccoli (80g), Carrots (60g), Potato flour (60g)",
+            instructions: "Stir-fry broccoli and carrots with oil. Dust with potato flour to thicken sauce."
+        }
+    ];
+
+    function renderRecipes() {
+        const container = document.getElementById('recipe-cards-container');
+        if (!container) return;
+        container.innerHTML = '';
+
+        PKU_RECIPES.forEach(recipe => {
+            const card = document.createElement('div');
+            card.className = "glass-card rounded-2xl p-5 flex flex-col justify-between hover:shadow-md transition-all border border-outline-variant/30";
+            
+            let catColor = "bg-primary/10 text-primary";
+            if (recipe.category === 'fruit') catColor = "bg-orange-500/10 text-orange-600";
+            if (recipe.category === 'starch') catColor = "bg-purple-500/10 text-purple-600";
+            if (recipe.category === 'grain') catColor = "bg-blue-500/10 text-blue-600";
+
+            card.innerHTML = `
+                <div>
+                  <div class="flex items-start justify-between gap-3 mb-2.5">
+                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wider ${catColor}">
+                      ${recipe.category}
+                    </span>
+                    <span class="font-numeric text-xs font-bold text-primary bg-primary-container px-2 py-1 rounded-lg">
+                      ${recipe.phe} mg Phe
+                    </span>
+                  </div>
+                  <h3 class="font-title font-bold text-[16px] text-on-surface mb-1.5">${recipe.name}</h3>
+                  <p class="text-xs text-on-surface-variant font-medium mb-3">Serving Size: <span class="text-on-surface font-semibold">${recipe.weight}g</span></p>
+                  
+                  <div class="mb-4">
+                    <p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wide mb-1">Ingredients</p>
+                    <p class="text-xs text-on-surface-variant leading-relaxed">${recipe.ingredients}</p>
+                  </div>
+                </div>
+                
+                <button onclick="logRecipe('${recipe.id}')" 
+                  class="w-full py-2.5 rounded-xl border border-primary hover:bg-primary hover:text-white text-primary font-semibold transition-all active:scale-[0.98] text-xs flex items-center justify-center gap-2 mt-2">
+                  <span class="material-symbols-outlined text-[16px]">add_circle</span>
+                  Log Recipe
+                </button>
+            `;
+            container.appendChild(card);
+        });
+    }
+
+    window.logRecipe = (recipeId) => {
+        const recipe = PKU_RECIPES.find(r => r.id === recipeId);
+        if (!recipe) return;
+
+        // Remove empty placeholder
+        const empty = mealLogList.querySelector('.log-empty');
+        if (empty) empty.remove();
+
+        // Map recipe category to breakdown key
+        let catKey = 'unknown';
+        if (recipe.category === 'fruit') catKey = 'fruit';
+        else if (recipe.category === 'vegetable') catKey = 'veg';
+        else if (recipe.category === 'grain') catKey = 'cereal';
+        else if (recipe.category === 'starch') catKey = 'starch';
+
+        const meal = {
+            id: Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+            name: recipe.name,
+            weight: recipe.weight,
+            phe: recipe.phe,
+            class: recipe.class,
+            category: catKey
+        };
+
+        mealLog.push(meal);
+        dailyUsed += recipe.phe;
+        categoryTotals[catKey] += recipe.phe;
+
+        renderMealLogItem(meal);
+        saveState();
+
+        updateBudgetUI();
+        updateCategoryBreakdown();
+
+        showToast(`Logged "${recipe.name}"!`);
+    };
+
+    // ── Profile Settings handlers ───────────────────────────────────────
+    const profileNameInput = document.getElementById('profile-name');
+    if (profileNameInput) {
+        profileNameInput.value = localStorage.getItem('phebe_user_name') || '';
+        profileNameInput.addEventListener('input', () => {
+            localStorage.setItem('phebe_user_name', profileNameInput.value);
+        });
+    }
+
+    const profileLimitSlider = document.getElementById('profile-limit-slider');
+    const profileLimitVal = document.getElementById('profile-limit-val');
+
+    if (profileLimitSlider && profileLimitVal) {
+        profileLimitSlider.addEventListener('input', () => {
+            const val = profileLimitSlider.value;
+            profileLimitVal.textContent = val;
+            limitInput.value = val;
+            lastValidLimit = parseInt(val, 10);
+            localStorage.setItem('phebe_daily_limit', val);
+            updateBudgetUI();
+        });
+    }
+
+    const clearDataBtn = document.getElementById('clear-data-btn');
+    if (clearDataBtn) {
+        clearDataBtn.addEventListener('click', () => {
+            if (confirm("Are you absolutely sure you want to delete all saved daily logs and settings? This cannot be undone.")) {
+                localStorage.clear();
+                window.location.reload();
+            }
+        });
+    }
 
     // Init — load state from local storage first
     try {
@@ -678,7 +1051,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!isNaN(parsedLimit) && parsedLimit >= 50 && parsedLimit <= 1200) {
                 limitInput.value = parsedLimit;
                 lastValidLimit = parsedLimit;
-                limitDisplay.textContent = parsedLimit;
+                if (profileLimitSlider && profileLimitVal) {
+                    profileLimitSlider.value = parsedLimit;
+                    profileLimitVal.textContent = parsedLimit;
+                }
             }
         }
 
@@ -697,19 +1073,17 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error('Failed to load persisted state:', e);
     }
 
+    renderRecipes();
     updateBudgetUI();
     updateCategoryBreakdown();
 });
 
-function addBreakdownItem(icon, label, value) {
+function addBreakdownItem(label, value, isBg = false) {
     const li = document.createElement('li');
-    li.className = 'flex justify-between items-center pb-2 border-b border-slate-100 dark:border-white/5 last:border-0 text-[14px]';
+    li.className = `flex justify-between items-center py-3 px-4 border-b border-surface-variant/50 last:border-b-0 ${isBg ? 'bg-[#006c4a]/5' : ''}`;
     li.innerHTML = `
-        <span class="flex items-center gap-2 text-slate-500 dark:text-[#bbcabf]">
-            <span class="material-symbols-outlined text-[16px] text-emerald-600 dark:text-[#4edea3]">${icon}</span>
-            ${label}
-        </span>
-        <span class="font-semibold text-slate-800 dark:text-[#dfe2f1]">${value}</span>
+        <span class="font-body-sm text-body-sm text-on-surface-variant">${label}</span>
+        <span class="font-body-sm text-body-sm ${isBg ? 'text-primary font-semibold' : 'text-on-surface font-semibold'}">${value}</span>
     `;
     document.getElementById('breakdown-list').appendChild(li);
 }
@@ -733,29 +1107,42 @@ if ('serviceWorker' in navigator) {
 // PWA Install Prompt
 let deferredPrompt;
 const installBtn = document.getElementById('pwa-install-btn');
+const installBtnProfile = document.getElementById('pwa-install-btn-profile');
+
+function showInstallButtons() {
+    if(installBtn) {
+        installBtn.classList.remove('hidden');
+        installBtn.classList.add('flex');
+    }
+}
+
+function hideInstallButtons() {
+    if(installBtn) {
+        installBtn.classList.add('hidden');
+        installBtn.classList.remove('flex');
+    }
+}
 
 window.addEventListener('beforeinstallprompt', (e) => {
-    // Prevent the mini-infobar from appearing on mobile
     e.preventDefault();
     deferredPrompt = e;
-    // Show install button
-    if(installBtn) installBtn.classList.remove('hidden');
+    showInstallButtons();
 });
 
 if(installBtn) {
-    installBtn.addEventListener('click', async () => {
-        if (!deferredPrompt) return;
-        deferredPrompt.prompt();
-        const { outcome } = await deferredPrompt.userChoice;
-        console.log(`User response to the install prompt: ${outcome}`);
-        deferredPrompt = null;
-        installBtn.classList.add('hidden');
-    });
+    installBtn.addEventListener('click', handleInstallClick);
+}
+
+async function handleInstallClick() {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`User response to the install prompt: ${outcome}`);
+    deferredPrompt = null;
+    hideInstallButtons();
 }
 
 window.addEventListener('appinstalled', () => {
     console.log('PWA was installed');
-    if(installBtn) installBtn.classList.add('hidden');
+    hideInstallButtons();
 });
-
-
