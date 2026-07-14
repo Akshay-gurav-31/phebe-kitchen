@@ -110,14 +110,6 @@ This project is a **consumer-facing client** for the [PKU Commons](https://githu
 
 ---
 
-## 🏆 Hackathon
-
-Built for the **PKU Commons Virtual Hackathon** hosted alongside the PKU USA Community Meeting.
-
-**Problem addressed:** Close the data feedback loop for PKU patients — from weeks of waiting for lab results to **instant, verified, offline-capable estimation at every meal.**
-
----
-
 ## 📄 License
 
 MIT © 2026 Akshay Gurav
