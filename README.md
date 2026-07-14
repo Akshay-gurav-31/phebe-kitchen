@@ -4,6 +4,7 @@
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-brightgreen?style=for-the-badge&logo=github)](https://akshay-gurav-31.github.io/phebe-kitchen/)
 [![PWA Ready](https://img.shields.io/badge/PWA-Offline%20Ready-blue?style=for-the-badge&logo=googlechrome)](https://akshay-gurav-31.github.io/phebe-kitchen/)
+[![GitHub Pages](https://img.shields.io/github/deployments/Akshay-gurav-31/phebe-kitchen/github-pages?label=GitHub%20Pages&logo=github&style=for-the-badge&color=success)](https://github.com/Akshay-gurav-31/phebe-kitchen/deployments)
 [![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
 
 ---
