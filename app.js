@@ -231,8 +231,21 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!foodNameVal) {
             hasError = true;
         } else {
-            const isInDatabase = Object.keys(FOOD_DATABASE).some(key => key === foodNameVal);
-            if (!isInDatabase) {
+            let matchedKey = null;
+            for (const key of Object.keys(FOOD_DATABASE)) {
+                const parts = key.split(/[ _]/);
+                let stem = parts[0].toLowerCase();
+                if (stem.endsWith('s')) {
+                    stem = stem.slice(0, -1);
+                }
+                const stem6 = stem.slice(0, 6);
+                if (stem6 && foodNameVal.includes(stem6)) {
+                    matchedKey = key;
+                    break;
+                }
+            }
+
+            if (!matchedKey) {
                 foodNameInput.style.borderColor = '#ef4444';
                 foodNameInput.style.boxShadow = '0 0 0 2px rgba(239,68,68,0.2)';
                 let errMsg = document.createElement('p');
@@ -241,6 +254,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 foodNameInput.parentElement.after(errMsg);
                 errMsg.textContent = `"${foodNameVal}" is not in the verified food list. Please pick from the dropdown suggestions.`;
                 hasError = true;
+            } else {
+                // Normalize input value to matching database key
+                foodNameInput.value = matchedKey;
             }
         }
 
