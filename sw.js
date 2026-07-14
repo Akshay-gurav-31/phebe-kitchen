@@ -1,10 +1,11 @@
-const CACHE_NAME = 'phebe-kitchen-v3';
+const CACHE_NAME = 'phebe-kitchen-v4';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './app.js',
   './manifest.json',
-  './icon.svg',
+  './assets/icons/icon.svg',
+  './assets/images/logo.png',
   'https://cdn.tailwindcss.com?plugins=forms,container-queries',
   'https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap',
   'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=Inter:wght@300..700&display=swap'
