@@ -1,4 +1,4 @@
-const CACHE_NAME = 'phebe-kitchen-v2';
+const CACHE_NAME = 'phebe-kitchen-v3';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -42,8 +42,32 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Always go to network for API calls (never cache)
+  // Never cache API calls
   if (url.pathname.startsWith('/api/')) {
+    return;
+  }
+
+  // Cache-FIRST for Tailwind CDN and Google Fonts (external CSS/JS)
+  // This is the fix for the "CSS disappears on refresh" bug:
+  // These external scripts are not caught by the .js/.html/.css pathname check
+  // because they have query params or complex paths. Handle them explicitly.
+  const isExternalAsset = (
+    url.hostname === 'cdn.tailwindcss.com' ||
+    url.hostname === 'fonts.googleapis.com' ||
+    url.hostname === 'fonts.gstatic.com'
+  );
+
+  if (isExternalAsset) {
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(event.request).then((response) => {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          return response;
+        });
+      })
+    );
     return;
   }
 
